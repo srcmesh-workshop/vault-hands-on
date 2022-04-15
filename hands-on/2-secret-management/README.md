@@ -115,6 +115,12 @@ Configure the secret at path `<MOUNT_PATH>/<SECERT_NAME>` to enable Check-And-Se
 $ vault kv metadata put -cas-required=true <MOUNT_PATH>/<SECERT_NAME>
 ```
 
+Update secret with latest version
+
+```bash
+$ vault kv put -cas=<LATEST_SECRET_VERSION> <MOUNT_PATH>/<SECERT_NAME> <KEY1>=<VALUE_1>
+```
+
 ## Delete KV Data
 
 ```bash
