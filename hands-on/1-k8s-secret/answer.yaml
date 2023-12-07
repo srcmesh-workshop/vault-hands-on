@@ -1,0 +1,127 @@
+# https://medium.com/@verove.clement/inject-secret-in-application-from-vault-agent-injector-60a3fe71628e
+# https://pavan1999-kumar.medium.com/hashicvault-secrets-in-kubernetes-with-csi-driver-ec917d4a2672
+# https://developer.hashicorp.com/vault/docs/platform/k8s/csi
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-serviceaccount
+  namespace: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: api
+  labels:
+    app: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-status: "update"
+        vault.hashicorp.com/agent-inject-secret-app: "kv/data/api"
+        vault.hashicorp.com/agent-inject-template-app: |
+          {{- with secret "kv/data/api" -}}
+          {{ range $k, $v := .Data.data }}
+            export {{ $k }}={{ $v }}
+          {{ end }}
+          {{- end -}}
+        vault.hashicorp.com/role: 'api'
+    spec:
+      serviceAccountName: api-serviceaccount
+      restartPolicy: Always
+      containers:
+        - name: api
+          image: verovec/golang-api-template:latest
+          command: ["/bin/sh"]
+          args: ["-c", ". /vault/secrets/app && ./app"]
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: dev
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 10
+            failureThreshold: 10
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1alpha1
+kind: SecretProviderClass
+metadata:
+  name: vault-user-creds
+  namespace: api
+spec:
+  provider: vault
+  secretObjects:
+    - secretName: vault-user-creds-secret
+      type: Opaque
+      data:
+        - objectName: user # References dbUsername below
+          key: user # Key within k8s secret for this value
+        - objectName: password
+          key: password
+  parameters:
+    roleName: 'api' # match vault auth role name
+    objects: |
+      - objectName: "user"
+        secretPath: "kv/data/user"
+        secretKey: "user"
+      - objectName: "password"
+        secretPath: "kv/data/db"
+        secretKey: "password"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: demo
+  namespace: api
+spec:
+  selector:
+    matchLabels:
+      app: demo
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      serviceAccountName: api-serviceaccount
+      containers:
+        - name: app
+          image: nginx
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vault-user-creds-secret
+                  key: password
+            - name: MYSQL_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vault-user-creds-secret
+                  key: user
+          volumeMounts:
+            - name: 'vault-user-creds'
+              mountPath: '/mnt/secrets-store'
+              readOnly: true
+      volumes:
+        - name: vault-user-creds
+          csi:
+            driver: 'secrets-store.csi.k8s.io'
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: 'vault-user-creds'

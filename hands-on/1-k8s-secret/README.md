@@ -57,33 +57,6 @@ policies=<policy-name> \
 ttl=1h
 ```
 
-```yaml
-apiVersion: secrets-store.csi.x-k8s.io/v1alpha1
-kind: SecretProviderClass
-metadata:
-  name: <spc-name>
-  namespace: <user-id>
-spec:
-  provider: vault
-  secretObjects:
-  - secretName: <k8s-secret-name>
-    type: Opaque
-    data:
-      - objectName: <obj1> # References dbUsername below
-        key: <key-in-k8s-secret> # Key within k8s secret for this value
-      - objectName: <obj2>
-        key: <key-in-k8s-secret>
-  parameters:
-    roleName: '<role-name>' # match vault auth role name
-    objects: |
-      - objectName: "<obj1>"
-        secretPath: "<mount-entry>/data/<path>"
-        secretKey: "<key1>"
-      - objectName: "<obj2>"
-        secretPath: "<mount-entry>/data/<path>"
-        secretKey: "<key2>"
-```
-
 ## Sidecar Injector
 
 ```yaml
